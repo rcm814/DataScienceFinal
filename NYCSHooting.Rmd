@@ -1,0 +1,411 @@
+---
+title: "NYC Shootings: Trends and Demographics (2006–2024)"
+author: "Riley Moore"
+date: "2025-06-17"
+output:
+  html_document: default
+  pdf_document: default
+---
+## Goals
+
+The goal of this analysis to see if there are any trends among the shootings in NYC from the time period of 2006 - 2024. This report aims to objectively view these shootings to see if shootings occur more frequently in certain areas of New York and if certain races or ages are more likely to be involved in shootings than otheres. 
+
+## Packages
+
+The two packages used in this analysis are 'tidyverse' and 'lubridate'.
+
+```{r setup, message = FALSE}
+library(tidyverse)
+library(lubridate)
+library(tidyr)
+library(purrr)
+```
+
+## Data Import
+
+After loading in the Data set we can see that it is not very clean and there are some variables that are not needed for this analysis. 
+
+```{r, message = FALSE}
+link <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+
+shootings <- read_csv(link) 
+```
+
+## Data Cleaning and Tidying 
+
+
+Removal of variables : OCCUR_TIME, PRECINCT, JURISDICTION_CODE, X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat, LOC_CLASSFCTN_DESC, INCIDENT_KEY, LOCATION_DESC
+
+Renaming of variables : date = OCCUR_DATE, area = BORO, location = LOC_OF_OCCUR_DESC, murder = STATISTICAL_MURDER_FLAG, P_age = PERP_AGE_GROUP, P_sex = PERP_SEX, P_race = PERP_RACE, V_age = VIC_AGE_GROUP, V_sex = VIC_SEX, V_race = VIC_RACE
+
+
+
+```{r tidy_data, echo = FALSE}
+  shootings <- shootings %>%
+    select(-c('OCCUR_TIME',
+            'PRECINCT','JURISDICTION_CODE',
+            'X_COORD_CD', 'Y_COORD_CD',
+            'Latitude', 'Longitude', 'Lon_Lat',
+            'LOC_CLASSFCTN_DESC', 'INCIDENT_KEY',
+            'LOCATION_DESC')) %>%
+    rename(
+      date = OCCUR_DATE,
+      area = BORO,
+      location = LOC_OF_OCCUR_DESC,
+      murder = STATISTICAL_MURDER_FLAG,
+      P_age = PERP_AGE_GROUP,
+      P_sex = PERP_SEX,
+      P_race = PERP_RACE,
+      V_age = VIC_AGE_GROUP,
+      V_sex = VIC_SEX,
+      V_race = VIC_RACE) %>%
+    mutate(
+      date = mdy(date),
+      year = year(date),
+      month = month(date),
+      day = day(date))
+
+valid_age_groups <- c("<18", "18-24", "25-44", "45-64", "65+")
+
+shootings <- shootings %>%
+  mutate(
+    P_age = ifelse(P_age %in% valid_age_groups, P_age, "Unknown"),
+    V_age = ifelse(V_age %in% valid_age_groups, V_age, "Unknown"),
+    P_age = factor(P_age, levels = c(valid_age_groups, "Unknown"), ordered = TRUE),
+    V_age = factor(V_age, levels = c(valid_age_groups, "Unknown"), ordered = TRUE),
+    P_sex = factor(P_sex, levels = c("F", "M", "U"), labels = c("Female", "Male", "Unknow")),
+    V_sex = factor(V_sex, levels = c("F", "M", "U"), labels = c("Female", "Male", "Unknow")),
+    P_race = ifelse(P_race %in% c("UNKNOWN", "(null)", NA), "Unknown", P_race),
+    V_race = ifelse(V_race %in% c("UNKNOWN", "(null)", NA), "Unknown", V_race),
+    P_race = str_to_title(str_trim(P_race)),
+    V_race = str_to_title(str_trim(V_race)),
+    P_race = factor(P_race),
+    V_race = factor(V_race),
+    area = factor(area),
+    location = factor(location)
+           )
+           
+summary(shootings)
+```
+
+
+## Data Exploration
+
+This section will explore the data to see if there are any trends in the shootings. A focus will be placed on the year, area, and demographics of the victims and perpetrators.
+
+
+```{r shooting_visualization}
+
+### Yearly Totals
+
+shootings_by_year <- shootings %>% 
+  group_by(year) %>% 
+  summarize(total_shootings = n(), .groups = "drop")
+              
+### Yearly by Borough
+
+shooting_by_year_area <- shootings %>%
+  group_by(area, year) %>%
+  summarize(count = n(), .groups = "drop")
+
+### Murder Rate per Year
+
+murders_by_year <- shootings %>% 
+  filter(!is.na(murder), !is.na(year)) %>%
+  group_by(year) %>%
+  summarize(total_shootings = n (),
+            total_murders = sum(murder, na.rm = TRUE), 
+            murder_rate = total_murders / total_shootings) %>%
+  ungroup()
+
+### Yearly Victim Count by Sex
+
+shootings_yearly_victim <- shootings %>% 
+  ungroup() %>%
+  group_by(year, V_sex) %>%
+  summarize(total_victims = n(), .groups = "drop")
+
+```
+
+## Visualizing Trends
+
+This chunk generates visual plots for shootings and murders over time as a whole and also broken down by Borough. \ The murder rate is also plotted to show the rate at which shootings are confirmed deadly.
+
+```{r yearly_data_plots}
+
+# Total Shootings Over Time
+
+ggplot(shootings_by_year, aes(x = year, y = total_shootings)) + 
+  geom_line(color = "red") +
+  geom_point(color = "black") + 
+  labs(
+    title = "Total NYC Shootings Per year",
+    x = "Year",
+    Y = "Total Shootings") +
+  theme_minimal()
+
+# Shootings by Borough
+
+ggplot(shooting_by_year_area, aes(x = year, y = count, color = area)) +
+  geom_line() +
+  geom_point() + 
+  labs(
+    title = "Yearly Shootings",
+    x = "Year",
+    Y = "Total Shootings") +
+  theme_minimal()
+
+## Murder Rate Plot
+ggplot(murders_by_year, aes(x = year, y = murder_rate)) + 
+  geom_line(color = "red") +
+  geom_point(color = "black") +
+  scale_y_continuous(labels = scales::percent_format()) + 
+  labs(
+    title = "Proportion of Shootings That Were Murders",
+    x = "Year",
+    Y = "Murder Rate") +
+  theme_minimal()
+
+
+## Total Murders Over Time
+
+ggplot(murders_by_year, aes(x = year, y = total_murders)) + 
+  geom_line(color = "red") +
+  geom_point(color = "black") + 
+  labs(
+    title = "Total NYC Murder Per Year",
+    x = "Year",
+    Y = "Total Murders") +
+  theme_minimal()
+
+```
+
+
+## Demographic Visualizations
+
+This section analyzes the demographic of the perpetrator and victim. The perpetrator data is a bit skewed by a large number of unknowns however the victims data set is more reliable. Plots depict Race and sex of perpetrators, age groups of perpetrators. Victims demographics are depicted by victim sex and race across boroughs, there is also a comparison plot betwen victim and perpetrator age groups. 
+
+```{r demographic_trends}
+
+# Perpetrator Race by Sex
+
+
+shootings_plot_race_sex <- shootings %>%
+  mutate(
+    P_race = fct_lump_min(P_race, min = 200),
+    P_race = fct_relevel(P_race, "Unknown", after = Inf),
+    P_sex = fct_na_value_to_level(P_sex)
+  )
+
+ggplot(shootings_plot_race_sex, aes(P_race, fill = P_sex)) +
+  geom_bar(position = "dodge", color = "black")+
+  scale_fill_manual(
+    values = c("Female" = "pink", "Male" = "blue", "Unknown" = "gray"),
+    name = "Sex"
+  ) +
+  labs(
+    title = "Perpetrator Race by Sex",
+    x = "Race",
+    y = "Count",
+    fill = "Sex"
+    ) +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top"
+        )
+
+# Perpetrator Age by Sex 
+
+
+ggplot(shootings, aes(P_age, fill = P_sex)) +
+  geom_bar(position = "dodge", color = "black") +
+  scale_fill_manual(values = c("Female" = "pink", "Male" = "blue", "Unknown" = "green")) +
+  labs(
+    title = "Perpetrator Age Group by Sex",
+    x = "Age Group",
+    y = "Count",
+    fill = "Sex"
+  ) +
+  theme_minimal(base_size = 10) 
+
+# Victim vs Perpetrator Age Distribution
+
+shootings_age_long <- shootings %>% 
+  select(P_age, V_age) %>%
+  pivot_longer(cols = everything(), names_to = "role", values_to = "age_group") %>%
+  mutate(role = recode(role, P_age = "Perpetrator", V_age = "Victim"))
+
+ggplot(shootings_age_long, aes(x = age_group, fill = role)) +
+  geom_bar(position = "dodge", color = "black") +
+  scale_fill_manual(values = c("Perpetrator" = "blue", "Victim" = "red")) +
+  labs(
+    title = "Age Group of Perpetrators and Victims",
+    x = "Age Group",
+    y = "Count",
+    fill = "Role"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top"
+  )
+
+
+# Victim Race by Borough
+
+ggplot(shootings, aes(x = fct_infreq(V_race), fill = area)) +
+  geom_bar(position = "fill", color = "black") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_brewer(palette = "Set2", name = "Borough") +
+  labs(
+    title = "Victim Race Distribution by Borough",
+    x = "Victim Race",
+    y = "Proportion of Shootings",
+  ) +
+  theme_minimal(base_size = 7) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        legend.position = "right"
+  )
+
+# Sex of Victim by Borough
+
+shootings %>%
+  ggplot(aes(area, fill = V_sex)) +
+  geom_bar(position = "dodge",
+           alpha = 0.5)+
+  labs(title = "Sex of Victim Count By Borough",
+       x = "Sex",
+       y = "Count") +
+    theme_minimal(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top"
+  )
+
+# Yearly Victim Count by Sex
+
+ggplot(shootings_yearly_victim, aes(x = year, y = total_victims, color = V_sex)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  scale_color_manual(values = c("Female" = "pink", "Male" = " blue", "Unknown" = "gray")) +
+  labs(
+    title = "Yearly Victim Count by Sex",
+    x = "Year",
+    y = "Number of Victims",
+    color = "Sex"
+  ) +
+  theme_minimal(base_size = 10)
+
+
+```
+
+
+# Modeleling
+
+A linear regression mode is made to predict total shootings for the next 5 years. Another linear regression model is made to predict shootings by area for the next 5 years. The models are based on the total shootings per year and the shootings per area per year. The predictions are then plotted to show the trends in shootings over the next 5 years.
+
+```{r predict_shootings_area}
+
+total_model <- lm(total_shootings ~ year, data = shootings_by_year)
+
+f_years <- data.frame(year = (max(shootings$year) + 1):(max(shootings$year) + 5))
+
+f_years$predicted <- predict(total_model, newdata = f_years)
+
+total_real <- shootings_by_year %>%
+  rename(predicted = total_shootings) %>%
+  mutate(type = "Real")
+
+total_forecast <- f_years %>%
+  mutate(type = "Forecast")
+
+combined_total <-bind_rows(total_real, total_forecast)
+
+
+per_area_predictions<- shooting_by_year_area %>%
+  nest(data = c(year, count)) %>%
+  mutate(
+    model = map(data, ~lm(count ~ year, data = .x)),
+    forecast = map2(model, data, ~{
+      future <- data.frame(year = (max(.y$year) + 1):(max(.y$year) + 5))
+      future$predicted <- predict(.x, newdata = future)
+      future
+    })
+  )%>%
+  select(area, forecast) %>% 
+  unnest(forecast)
+
+area_real <- shooting_by_year_area %>%
+  rename(predicted = count) %>%
+  mutate(type = "Real")
+
+area_forecast <- per_area_predictions %>%
+  mutate(type = "Forecast")
+
+combined_area <- bind_rows(area_real, area_forecast)
+
+
+```
+
+
+## Predicted Plots
+
+Two plots are shown that show the predicted shootings for the next 5 years. The first plot shows the total shootings predicted and the second plot shows the predicted shootings by area. The plots are color coded to show the real data and the forecasted data. The plots are meant to show the trends in shootings over the next 5 years and how they may change by area.
+
+```{r predicted_by_area_plots}
+
+
+# 5 Year Predictions of Total Shootings
+
+ggplot(combined_total, aes(x = year, y = predicted, color = type)) +
+  geom_line() +
+  geom_point(aes(shape = type), size = 2) +
+  scale_color_manual(values = c("Real" = "blue", "Forecast" = "red")) +
+  scale_shape_manual(values = c("Real" = 16, "Forecast" = 17)) +
+  labs(
+   title = "5-Year Forecast of Total Shootings",
+   x = "Year",
+   y = "Predicted/Real Shootings",
+   color = "Data Type",
+   shape = "Data Type"
+  ) + 
+  theme_minimal() + 
+  theme(
+    plot.title = element_text(size = 14, hjust = 0.5, face = "bold"),
+    legend.position = "bottom",
+    legend.box = "horizontal"
+  )
+
+# 5 Year Predictions of Shootings by Area
+
+ggplot(combined_area, aes(x = year, y = predicted, color = area, linetype = type)) +
+  geom_line(linewidth = 1) +
+  geom_point(data = filter(combined_area, type == "Real"), shape = 1, size = 2) + 
+  labs(
+   title = "5-Year Forecast of Shooting per Borough",
+   x = "Year",
+   y = "Predicted/Real Shootings",
+   color = "Borough",
+   linetype = "Data Type"
+  ) + 
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 9, hjust = 0.5, face = "bold"),
+    legend.position = "right",
+  )
+        
+
+```
+
+
+#Bias
+
+There do exist some biases in this data set. The data set is skewed by a large number of unknowns in the perpetrator data set. This is likely due to the fact that many shootings are not solved and the perpetrator is not known. The victim data set is more reliable as it is based on the victims that were involved in the shootings. The data set also does not include any information on the socioeconomic status of the victims or perpetrators, which could be a factor in the shootings.
+
+Demographic data is also skewed by the fact that many shootings are not reported or are not included in the data set. This could be due to a variety of factors such as fear of retaliation, lack of trust in law enforcement, or simply not being aware of the shooting.
+
+Population data is also not included in the data set, which could be a factor in the shootings. The data set does not include any information on the population of the areas where the shootings occurred, which could be a factor in the number of shootings.
+
+
+# Conclusion
+
+There will be less shootings in the next 5 years than there were in the last 5 years. The data shows that the number of shootings has been decreasing over the last few years and this trend is expected to continue. The data also shows that the number of shootings in certain areas is decreasing more than others, which could be due to a variety of factors such as increased police presence or community outreach programs.
