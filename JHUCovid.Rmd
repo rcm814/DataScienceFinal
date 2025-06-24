@@ -4,6 +4,9 @@ author: "Riley Moore"
 date: "2025-06-23"
 output: html_document
 ---
+## Goals
+
+The goal of this analysis to see begin to understand how to properly input data from John Hopkins University (JHU) and how to properly visualize the data. The analysis also aims to understand the data and how to properly model the data. The analysis will also look at the bias in the data and how it can be used to predict future cases of covid 19.
 
 ## Included Libraries
 
@@ -52,6 +55,8 @@ We also join together the data sets of global_case and global_deaths into one da
 We do a similar joining together of the data sets us_cases and us_deaths into one data set US. We also filter both combined data set to only show data in which cases are over 0.\
 ```{r tidy_global_data, message = FALSE}
 
+## GLobal
+
 global_cases <- global_cases %>%
   pivot_longer(cols = 
                  -c('Province/State',
@@ -90,8 +95,8 @@ global <- global %>%
   select(-c(UID, FIPS)) %>%
   select(Province_State, Country_Region, date, cases, deaths, Population, Combined_Key)
 
-```
-```{r tidy_US_data, message = FALSE}
+## US 
+
 us_cases <- us_cases %>% 
   pivot_longer(cols = -(UID:Combined_Key),
                names_to = "date",
